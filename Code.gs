@@ -1,15 +1,8 @@
-const scriptProps = PropertiesService.getScriptProperties().getProperties();
-
-const awsAccessKeyId = scriptProps['AWS_ACCESS_KEY_ID'];
-const awsSecretKey = scriptProps['AWS_SECRET_KEY'];
-const awsRegion = scriptProps['AWS_REGION'];
-const bucketName = scriptProps['BUCKET'];
-
 // add a menu to the toolbar...
 const createMenu = () => {
     const menu = SpreadsheetApp.getUi()
         .createMenu('Publish Data')
-        .addItem('Configure...', 'showConfig');
+        .addItem('Set Project Name', 'showConfig');
 
     if (hasRequiredProps()) {
         menu.addItem('Publish', 'publish');
@@ -29,7 +22,13 @@ const onInstall = () => {
 
 // https://github.com/liddiard/google-sheet-s3/issues/3#issuecomment-1276788590
 const s3PutObject = (objectName, object) => {
-    const props = PropertiesService.getDocumentProperties().getProperties();
+    const scriptProps = PropertiesService.getScriptProperties().getProperties();
+
+    const awsAccessKeyId = scriptProps['AWS_ACCESS_KEY_ID'];
+    const awsSecretKey = scriptProps['AWS_SECRET_KEY'];
+    const awsRegion = scriptProps['AWS_REGION'];
+    const bucketName = scriptProps['BUCKET'];
+
     const contentType = 'application/json';
 
     const contentBlob = Utilities.newBlob(JSON.stringify(object), contentType);
@@ -52,6 +51,8 @@ const s3PutObject = (objectName, object) => {
     return AWS.request(service, awsRegion, action, params, method, payload, headers, uri, options);
 };
 
+const s3_format = (s) => s.replace(/\s+/g, '_').replace(/[^\w\-_]/g, '');
+
 // checks if document has the required configuration settings to publish to S3
 // Note: does not check if the config is valid
 const hasRequiredProps = () => {
@@ -64,12 +65,22 @@ const hasRequiredProps = () => {
 
 // publish updated JSON to S3 if changes were made to the first sheet
 const publish = () => {
+    const ui = SpreadsheetApp.getUi();
+
+    if (!hasRequiredProps()) {
+        ui.alert('Please set project name before publishing.')
+
+        return;
+    }
+
     const sheet = SpreadsheetApp.getActiveSpreadsheet();
     const props = PropertiesService.getDocumentProperties().getProperties();
     // do nothing if required configuration settings are not present, or
     // if the edited sheet is not the first one (sheets are indexed from 1,
     // not 0)
-    if (!hasRequiredProps() || sheet.getActiveSheet().getIndex() > 1) {
+    if (sheet.getActiveSheet().getIndex() > 1) {
+        ui.alert('Can only publish first sheet.');
+
         return;
     }
 
@@ -104,7 +115,7 @@ const publish = () => {
         );
 
     // upload to AWS S3
-    const response = s3PutObject(['', `${props.projectName}_${sheet.getId()}`].join('/'), cells);
+    const response = s3PutObject([props.projectName, `${sheet.getId()}`].join('/'), cells);
     const error = response.toString(); // response is empty if publishing successful
     if (error) {
         throw error;
@@ -113,46 +124,22 @@ const publish = () => {
 
 // show the configuration modal dialog UI
 const showConfig = () => {
-    const sheet = SpreadsheetApp.getActiveSpreadsheet(),
-        props = PropertiesService.getDocumentProperties().getProperties(),
-        // default to empty strings, otherwise the string "undefined" will be shown
-        // for the value
-        defaultProps = {
-            projectName: ''
-        }
-    template = HtmlService.createTemplateFromFile('config');
-
-    template.sheetId = sheet.getId();
-    Object.assign(template, defaultProps, props);
-    SpreadsheetApp.getUi()
-        .showModalDialog(template.evaluate(), 'Publishing configuration');
-};
-
-// update document configuration with values from the modal
-const updateConfig = form => {
-    const sheet = SpreadsheetApp.getActiveSpreadsheet();
-    const currentProps = PropertiesService.getDocumentProperties().getProperties();
-    PropertiesService.getDocumentProperties().setProperties({
-        ...currentProps,
-        ...form
-    });
-    let title, message;
-    if (hasRequiredProps()) {
-        try {
-            publish();
-            title = '✓ Configuration updated';
-            message = `Published spreadsheet will be accessible at:\nhttps://${bucketName}.s3.amazonaws.com/${form.path}/${form.projectName}_${sheet.getId()}`;
-        }
-        catch (error) {
-            title = '⚠ Error publishing';
-            message = error;
-        }
-    }
-    else {
-        title = '⚠ Required info missing';
-        message = 'You need to fill out all highlighted fields for your spreadsheet to be published.';
-    }
-    createMenu(); // update menu to show the "Publish" item if needed
+    const props = PropertiesService.getDocumentProperties();
+    const projectName = props.getProperty('projectName') === null ? 'Project' : props.getProperty('projectName');
     const ui = SpreadsheetApp.getUi();
-    ui.alert(title, message, ui.ButtonSet.OK);
+
+    const result = ui.prompt(
+        `Rename ${projectName}`,
+        'Project Name',
+        ui.ButtonSet.OK_CANCEL
+    );
+
+    const button = result.getSelectedButton();
+    const input = result.getResponseText();
+
+    if (button === ui.Button.OK) {
+        const nextName = s3_format(input);
+        props.setProperty('projectName', nextName);
+        ui.alert(`Project name set to "${nextName}"`);
+    }
 };
