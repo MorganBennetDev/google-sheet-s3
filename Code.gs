@@ -2,11 +2,8 @@
 const createMenu = () => {
     const menu = SpreadsheetApp.getUi()
         .createMenu('Publish Data')
-        .addItem('Set Project Name', 'showConfig');
-
-    if (hasRequiredProps()) {
-        menu.addItem('Publish', 'publish');
-    }
+        .addItem('Set Project Name', 'showConfig')
+        .addItem('Publish', 'publish');
 
     menu.addToUi();
 };
@@ -90,7 +87,7 @@ const publish = () => {
         .getValues()
         // filter out empty rows
         .filter(row =>
-            row.some(val => typeof val !== 'string' || val.length)
+            row.some(val => val !== null)
         )
         // filter out columns that don't have a header (i.e. text in row 1)
         .map((row, _, rows) =>
@@ -115,10 +112,12 @@ const publish = () => {
         );
 
     // upload to AWS S3
-    const response = s3PutObject([props.projectName, `${sheet.getId()}`].join('/'), cells);
+    const response = s3PutObject([props.projectName, `${sheet.getId()}.json`].join('/'), cells);
     const error = response.toString(); // response is empty if publishing successful
     if (error) {
         throw error;
+    } else {
+        ui.alert('Data published!');
     }
 };
 
