@@ -96,8 +96,8 @@
         <ul>
             <li>
                 <label for="bucket-name">Project name</label>
-                <input id="bucket-name" name="bucketName" type="text" autofocus value="<?!= bucketName ?>"
-                    placeholder="my-bucket-name" required />
+                <input id="bucket-name" name="projectName" type="text" autofocus value="<?!= projectName ?>"
+                    placeholder="my-project-name" required pattern="[\w_-]+" />
             </li>
 
             <li class="sheet-id">

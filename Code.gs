@@ -1,6 +1,7 @@
 const awsAccessKeyId = '';
 const awsSecretKey = '';
 const awsRegion = 'us-east-2';
+const bucketName = '';
 
 // add a menu to the toolbar...
 const createMenu = () => {
@@ -42,7 +43,7 @@ const s3PutObject = (objectName, object) => {
     };
     const uri = `/${objectName}`;
     const options = {
-        Bucket: props.bucketName
+        Bucket: bucketName
     };
 
     AWS.init(awsAccessKeyId, awsSecretKey);
@@ -54,7 +55,7 @@ const s3PutObject = (objectName, object) => {
 const hasRequiredProps = () => {
     const props = PropertiesService.getDocumentProperties().getProperties();
     const requiredProps = [
-        'bucketName'
+        'projectName'
     ];
     return requiredProps.every(prop => props[prop]);
 };
@@ -101,7 +102,7 @@ const publish = () => {
         );
 
     // upload to AWS S3
-    const response = s3PutObject(['', sheet.getId()].join('/'), cells);
+    const response = s3PutObject(['', `${props.projectName}_${sheet.getId()}`].join('/'), cells);
     const error = response.toString(); // response is empty if publishing successful
     if (error) {
         throw error;
@@ -115,7 +116,7 @@ const showConfig = () => {
         // default to empty strings, otherwise the string "undefined" will be shown
         // for the value
         defaultProps = {
-            bucketName: ''
+            projectName: ''
         }
     template = HtmlService.createTemplateFromFile('config');
 
@@ -138,7 +139,7 @@ const updateConfig = form => {
         try {
             publish();
             title = '✓ Configuration updated';
-            message = `Published spreadsheet will be accessible at:\nhttps://${form.bucketName}.s3.amazonaws.com/${form.path}/${sheet.getId()}`;
+            message = `Published spreadsheet will be accessible at:\nhttps://${bucketName}.s3.amazonaws.com/${form.path}/${form.projectName}_${sheet.getId()}`;
         }
         catch (error) {
             title = '⚠ Error publishing';
