@@ -1,7 +1,9 @@
-const awsAccessKeyId = '';
-const awsSecretKey = '';
-const awsRegion = 'us-east-2';
-const bucketName = '';
+const scriptProps = PropertiesService.getScriptProperties().getProperties();
+
+const awsAccessKeyId = scriptProps['AWS_ACCESS_KEY_ID'];
+const awsSecretKey = scriptProps['AWS_SECRET_KEY'];
+const awsRegion = scriptProps['AWS_REGION'];
+const bucketName = scriptProps['BUCKET'];
 
 // add a menu to the toolbar...
 const createMenu = () => {
