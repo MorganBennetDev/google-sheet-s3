@@ -93,47 +93,11 @@
 <body>
 
     <form onsubmit="handleSubmit(); return false">
-        <p><strong>Note:</strong> You must already have an S3 bucket configured before filling out the fields below to
-            enable publishing. See the <a
-                href="https://github.com/liddiard/google-sheet-s3/blob/master/README.md#aws-setup" target="_blank">AWS
-                setup instructions</a> for instructions on how to do that.</p>
-        <p>See the <a href="https://github.com/liddiard/google-sheet-s3/blob/master/README.md#google-sheet-setup"
-                target="_blank">Google Sheet setup instructions</a> for information on how to format your spreadsheet
-            for publishing.</p>
         <ul>
             <li>
-                <label for="bucket-name">S3 bucket name</label>
+                <label for="bucket-name">Project name</label>
                 <input id="bucket-name" name="bucketName" type="text" autofocus value="<?!= bucketName ?>"
                     placeholder="my-bucket-name" required />
-            </li>
-
-            <li>
-                <label for="path">Path</label>
-                <input id="path" name="path" type="text" value="<?!= path ?>" placeholder="path/to/folder" />
-                <span class="desc">Folder path within the bucket where the spreadsheet JSON file will be saved,
-                    <strong>without leading or trailing slashes</strong>. Leave blank for the top level.</span>
-            </li>
-
-            <li>
-                <label for="aws-region">AWS region</label>
-                <input id="aws-access-region" name="awsRegion" type="text" value="<?!= awsRegion ?>"
-                    placeholder="us-west-2" required />
-                <span class="desc">This value is listed on your S3 bucket's "Properties" page.</span>
-            </li>
-
-            <li>
-                <label for="aws-access-key-id">AWS access key ID</label>
-                <input id="aws-access-key-id" name="awsAccessKeyId" type="text" value="<?!= awsAccessKeyId ?>"
-                    required />
-                <span class="desc">Get this value from the <a href="https://console.aws.amazon.com/iam/"
-                        target="_blank">IAM Console</a>.</span>
-            </li>
-
-            <li>
-                <label for="aws-secret-key">AWS secret key</label>
-                <input id="aws-secret-key" name="awsSecretKey" type="password" value="<?!= awsSecretKey ?>" required />
-                <span class="desc">Get this value from the <a href="https://console.aws.amazon.com/iam/"
-                        target="_blank">IAM Console</a>.</span>
             </li>
 
             <li class="sheet-id">

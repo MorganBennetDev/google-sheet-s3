@@ -1,7 +1,11 @@
+const awsAccessKeyId = '';
+const awsSecretKey = '';
+const awsRegion = 'us-east-2';
+
 // add a menu to the toolbar...
 const createMenu = () => {
     const menu = SpreadsheetApp.getUi()
-        .createMenu('Publish to S3')
+        .createMenu('Publish Data')
         .addItem('Configure...', 'showConfig');
 
     if (hasRequiredProps()) {
@@ -29,7 +33,6 @@ const s3PutObject = (objectName, object) => {
     contentBlob.setName(objectName);
 
     const service = 's3';
-    const region = props.awsRegion;
     const action = 'PutObject';
     const params = {};
     const method = 'PUT';
@@ -42,8 +45,8 @@ const s3PutObject = (objectName, object) => {
         Bucket: props.bucketName
     };
 
-    AWS.init(props.awsAccessKeyId, props.awsSecretKey);
-    return AWS.request(service, region, action, params, method, payload, headers, uri, options);
+    AWS.init(awsAccessKeyId, awsSecretKey);
+    return AWS.request(service, awsRegion, action, params, method, payload, headers, uri, options);
 };
 
 // checks if document has the required configuration settings to publish to S3
@@ -51,10 +54,7 @@ const s3PutObject = (objectName, object) => {
 const hasRequiredProps = () => {
     const props = PropertiesService.getDocumentProperties().getProperties();
     const requiredProps = [
-        'bucketName',
-        'awsRegion',
-        'awsAccessKeyId',
-        'awsSecretKey'
+        'bucketName'
     ];
     return requiredProps.every(prop => props[prop]);
 };
@@ -101,7 +101,7 @@ const publish = () => {
         );
 
     // upload to AWS S3
-    const response = s3PutObject([props.path, sheet.getId()].join('/'), cells);
+    const response = s3PutObject(['', sheet.getId()].join('/'), cells);
     const error = response.toString(); // response is empty if publishing successful
     if (error) {
         throw error;
@@ -115,18 +115,14 @@ const showConfig = () => {
         // default to empty strings, otherwise the string "undefined" will be shown
         // for the value
         defaultProps = {
-            bucketName: '',
-            path: '',
-            awsRegion: '',
-            awsAccessKeyId: '',
-            awsSecretKey: ''
+            bucketName: ''
         }
     template = HtmlService.createTemplateFromFile('config');
 
     template.sheetId = sheet.getId();
     Object.assign(template, defaultProps, props);
     SpreadsheetApp.getUi()
-        .showModalDialog(template.evaluate(), 'Amazon S3 publishing configuration');
+        .showModalDialog(template.evaluate(), 'Publishing configuration');
 };
 
 // update document configuration with values from the modal
@@ -145,13 +141,13 @@ const updateConfig = form => {
             message = `Published spreadsheet will be accessible at:\nhttps://${form.bucketName}.s3.amazonaws.com/${form.path}/${sheet.getId()}`;
         }
         catch (error) {
-            title = '⚠ Error publishing to S3';
+            title = '⚠ Error publishing';
             message = error;
         }
     }
     else {
         title = '⚠ Required info missing';
-        message = 'You need to fill out all highlighted fields for your spreadsheet to be published to S3.';
+        message = 'You need to fill out all highlighted fields for your spreadsheet to be published.';
     }
     createMenu(); // update menu to show the "Publish" item if needed
     const ui = SpreadsheetApp.getUi();
