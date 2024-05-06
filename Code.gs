@@ -2,7 +2,6 @@
 const createMenu = () => {
     const menu = SpreadsheetApp.getUi()
         .createMenu('Publish Data')
-        .addItem('Set Project Name', 'showConfig')
         .addItem('Publish', 'publish');
 
     menu.addToUi();
@@ -64,22 +63,7 @@ const hasRequiredProps = () => {
 const publish = () => {
     const ui = SpreadsheetApp.getUi();
 
-    if (!hasRequiredProps()) {
-        ui.alert('Please set project name before publishing.')
-
-        return;
-    }
-
     const sheet = SpreadsheetApp.getActiveSpreadsheet();
-    const props = PropertiesService.getDocumentProperties().getProperties();
-    // do nothing if required configuration settings are not present, or
-    // if the edited sheet is not the first one (sheets are indexed from 1,
-    // not 0)
-    if (sheet.getActiveSheet().getIndex() > 1) {
-        ui.alert('Can only publish first sheet.');
-
-        return;
-    }
 
     // get cell values from the range that contains data (2D array)
     const rows = sheet
@@ -112,34 +96,17 @@ const publish = () => {
         );
 
     // upload to AWS S3
+    const name = s3_format(sheet.getName());
     const id = sheet.getId();
-    const response = s3PutObject([`${props.projectName}_${id}`, `${id}.json`].join('/'), cells);
+    const active_name = s3_format(sheet.getActiveSheet().getName());
+    const active_id = sheet.getActiveSheet().getSheetId();
+
+    const response = s3PutObject([`${name}_${id}`, `${active_name}_${active_id}.json`].join('/'), cells);
     const error = response.toString(); // response is empty if publishing successful
+
     if (error) {
         throw error;
     } else {
         ui.alert('Data published!');
-    }
-};
-
-// show the configuration modal dialog UI
-const showConfig = () => {
-    const props = PropertiesService.getDocumentProperties();
-    const projectName = props.getProperty('projectName') === null ? 'Project' : props.getProperty('projectName');
-    const ui = SpreadsheetApp.getUi();
-
-    const result = ui.prompt(
-        `Rename ${projectName}`,
-        'Project Name',
-        ui.ButtonSet.OK_CANCEL
-    );
-
-    const button = result.getSelectedButton();
-    const input = result.getResponseText();
-
-    if (button === ui.Button.OK) {
-        const nextName = s3_format(input);
-        props.setProperty('projectName', nextName);
-        ui.alert(`Project name set to "${nextName}"`);
     }
 };
