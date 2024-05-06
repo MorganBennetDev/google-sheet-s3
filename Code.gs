@@ -59,12 +59,7 @@ const hasRequiredProps = () => {
     return requiredProps.every(prop => props[prop]);
 };
 
-// publish updated JSON to S3 if changes were made to the first sheet
-const publish = () => {
-    const ui = SpreadsheetApp.getUi();
-
-    const sheet = SpreadsheetApp.getActiveSpreadsheet();
-
+const parse_sheet = (sheet) => {
     // get cell values from the range that contains data (2D array)
     const rows = sheet
         .getDataRange()
@@ -95,18 +90,32 @@ const publish = () => {
                 , {})
         );
 
+    return cells;
+};
+
+// publish updated JSON to S3 if changes were made to the first sheet
+const publish = () => {
+    const ui = SpreadsheetApp.getUi();
+
+    const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = spreadsheet.getActiveSheet();
+
+    const data = parse_sheet(sheet);
+
     // upload to AWS S3
-    const name = s3_format(sheet.getName());
+    const name = s3_format(spreadsheet.getName());
     const id = sheet.getId();
     const active_name = s3_format(sheet.getActiveSheet().getName());
     const active_id = sheet.getActiveSheet().getSheetId();
 
-    const response = s3PutObject([`${name}_${id}`, `${active_name}_${active_id}.json`].join('/'), cells);
+    const publish_path = [`${name}_${id}`, `${active_name}_${active_id}.json`].join('/');
+
+    const response = s3PutObject(publish_path, data);
     const error = response.toString(); // response is empty if publishing successful
 
     if (error) {
         throw error;
     } else {
-        ui.alert('Data published!');
+        ui.alert(`Data published to ${publish_path}!`);
     }
 };
