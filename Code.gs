@@ -120,17 +120,45 @@ const parse_row = (schema, row) => {
 };
 
 /**
+ * Transforms a Google RichTextValue object into an array of runs with formatting and URLs. If a run has no formatting and no URL it will simply be returned as a string.
+ * @param {RichTextValue} text A Google RichTextValue object.
+ * @returns {({bold: boolean, italic: boolean, text: string, url: string | null} | string)[]} The transformed RichTextValue.
+ */
+const process_rich_text = (text) => {
+    return text.getRuns().map(run => {
+        const style = run.getTextStyle();
+
+        const bold = style.isBold();
+        const italic = style.isItalic();
+        const text = run.getText();
+        const url = run.getLinkUrl();
+
+        if (bold || italic || url) {
+            return {
+                bold: bold,
+                italic: italic,
+                text: text,
+                url: url
+            };
+        } else {
+            return text;
+        }
+    });
+};
+
+/**
  * Takes a Google Sheet object and outputs an array of objects representing its rows parsed with a shcema defined by its header (first) row and {@link parse_schema}.
  * @param {Sheet} sheet A Google Sheet object.
  * @returns {{[string]: string | string[]}[]} An array of the parsed row objects.
  */
 const parse_sheet = (sheet) => {
     const data = sheet.getDataRange().getValues();
+    const rich_data = sheet.getDataRange().getRichTextValues().map(row => row.map(text => process_rich_text(text)));
 
     if (data.length === 0 || data[0].length === 0) return;
 
     const header = data[0];
-    const rows = data.slice(1);
+    const rows = rich_data.slice(1);
 
     const schema = parse_schema(header);
     const entries = rows.map(row => parse_row(JSON.parse(JSON.stringify(schema)), row));
