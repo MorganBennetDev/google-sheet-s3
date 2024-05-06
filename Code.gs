@@ -59,7 +59,7 @@ const s3PutObject = (objectName, object) => {
 const s3_format = (s) => s.replace(/\s+/g, '_').replace(/[^\w\-_]/g, '');
 
 /**
- * Transforms the header row of a spreadsheet into a schema to aid in parsing data rows later on. The number of entries for each key is determined by the number of empty cells following it in the header row with the exception of the last key. The last key will be treated as a single value unless it is followed directly by a "..." key, in which case it will be treated as having potentially infinite entries.
+ * Transforms the header row of a spreadsheet into a schema to aid in parsing data rows later on. The number of entries for each key is determined by the number of empty cells following it in the header row with the exception of the last key. The last key will be treated as a single value unless it is followed directly by a "..." key, in which case it will be treated as having up to 999 entries.
  * @param {any[]} header The header row of a spreadsheet
  * @returns {{name: string, entries: number}[]} The data schema for this sheet derived from the header row.
  */
@@ -79,7 +79,7 @@ const parse_schema = (header) => {
                 schema.push({
                     name: cell,
                     entries: 1
-                })
+                });
             }
         }
     }
@@ -87,7 +87,7 @@ const parse_schema = (header) => {
     // Allow for the user to specify that the last key is for an array of unbounded size
     if (schema.length >= 2 && schema[schema.length - 1].name === '...') {
         schema.pop();
-        schema[schema.length - 1].entries = Infinity;
+        schema[schema.length - 1].entries = 999;
     }
 
     return schema;
@@ -133,7 +133,7 @@ const parse_sheet = (sheet) => {
     const rows = data.slice(1);
 
     const schema = parse_schema(header);
-    const entries = rows.map(row => parse_row(schema, row));
+    const entries = rows.map(row => parse_row(JSON.parse(JSON.stringify(schema)), row));
 
     return entries;
 };
@@ -221,7 +221,7 @@ const publish_all = () => {
 
     if (!error) {
         const publish_path = get_project_name(spreadsheet);
-        
+
         ui.alert(`Data published to ${publish_path}!`);
     }
 };
