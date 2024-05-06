@@ -1,7 +1,8 @@
 const createMenu = () => {
     const menu = SpreadsheetApp.getUi()
         .createMenu('Publish Data')
-        .addItem('Publish', 'publish');
+        .addItem('Publish Current Sheet', 'publish_active')
+        .addItem('Publish All Sheets', 'publish_all');
 
     menu.addToUi();
 };
@@ -138,31 +139,89 @@ const parse_sheet = (sheet) => {
 };
 
 /**
- * Parses the currently active sheet and publishes the result to S3 at "<spreadsheet name>_<spreadsheet id>/<sheet name>_<sheet id>.json".
+ * Outputs the name of the parent folder for this project in S3.
+ * @param {Spreadsheet} spreadsheet A Google Spreadsheet object.
+ * @returns {string} "<spreadsheet name>_<spreadsheet id>"
  */
-const publish = () => {
+const get_project_name = (spreadsheet) => {
+    const name = s3_format(spreadsheet.getName());
+    const id = spreadsheet.getId();
+
+    return `${name}_${id}`
+}
+
+/**
+ * Outputs the file name for this sheet in S3.
+ * @param {Sheet} sheet A Google Sheet object. 
+ * @returns {string} "<sheet name>_<sheet id>.json"
+ */
+const get_file_name = (sheet) => {
+    const active_name = s3_format(sheet.getName());
+    const active_id = sheet.getSheetId();
+
+    return `${active_name}_${active_id}.json`;
+}
+
+/**
+ * Parses a specific sheet and publishes the result to S3 at "<spreadsheet name>_<spreadsheet id>/<sheet name>_<sheet id>.json".
+ * @param {Spreadsheet} spreadsheet The parent spreadsheet.
+ * @param {Sheet} sheet The sheet to publish.
+ * @returns {string} The response from S3. This will be empty if publishing was successful.
+ */
+const publish_sheet = (spreadsheet, sheet) => {
+    const data = parse_sheet(sheet);    
+
+    const publish_path = [get_project_name(spreadsheet), get_file_name(sheet)].join('/');
+
+    const response = s3PutObject(publish_path, data);
+
+    return response.toString();
+}
+
+/**
+ * Publishes the currently active sheet using {@link publish_sheet}.
+ */
+const publish_active = () => {
     const ui = SpreadsheetApp.getUi();
 
     const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
     const sheet = spreadsheet.getActiveSheet();
 
-    const data = parse_sheet(sheet);
-
-    // upload to AWS S3
-    const name = s3_format(spreadsheet.getName());
-    const id = spreadsheet.getId();
-    const active_name = s3_format(sheet.getName());
-    const active_id = sheet.getSheetId();
-
-    const publish_path = [`${name}_${id}`, `${active_name}_${active_id}.json`].join('/');
-
-    const response = s3PutObject(publish_path, data);
-    const error = response.toString(); // response is empty if publishing successful
+    const error = publish_sheet(spreadsheet, sheet);
 
     if (error) {
-        ui.alert(`There was an error publishing your sheet. ${error}`)
-        throw error;
+        ui.alert(`There was an error publishing your sheet. ${error}`);
     } else {
+        const publish_path = [get_project_name(spreadsheet), get_file_name(sheet)].join('/');
+
+        ui.alert(`Data published to ${publish_path}!`);
+    }
+};
+
+/**
+ * Publishes all sheets using {@link publish_sheet}.
+ */
+const publish_all = () => {
+    const ui = SpreadsheetApp.getUi();
+
+    const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+    const sheets = spreadsheet.getSheets();
+
+    let error = false;
+
+    for (const sheet of sheets) {
+        const error = publish_sheet(spreadsheet, sheet);
+
+        if (error) {
+            ui.alert(`There was an error publishing your sheet. ${error}`);
+            error = true;
+            break;
+        }
+    }
+
+    if (!error) {
+        const publish_path = get_project_name(spreadsheet);
+        
         ui.alert(`Data published to ${publish_path}!`);
     }
 };
