@@ -1,4 +1,3 @@
-// add a menu to the toolbar...
 const createMenu = () => {
     const menu = SpreadsheetApp.getUi()
         .createMenu('Publish Data')
@@ -7,7 +6,6 @@ const createMenu = () => {
     menu.addToUi();
 };
 
-// ...when the add-on is installed or opened
 const onOpen = () => {
     createMenu();
 };
@@ -16,7 +14,12 @@ const onInstall = () => {
     createMenu();
 };
 
-// https://github.com/liddiard/google-sheet-s3/issues/3#issuecomment-1276788590
+/**
+ * Attempts to publish an object to S3 and returns the response.
+ * @param objectName The name of the object to be published to S3.
+ * @param object The object to be published to S3.
+ * @returns The response from S3 to the publishing request.
+ */
 const s3PutObject = (objectName, object) => {
     const scriptProps = PropertiesService.getScriptProperties().getProperties();
 
@@ -47,8 +50,18 @@ const s3PutObject = (objectName, object) => {
     return AWS.request(service, awsRegion, action, params, method, payload, headers, uri, options);
 };
 
+/**
+ * Formats strings as valid S3 filenames. Replaces any runs of one or more whitespace characters with underscores and then removes any characters aside from letters, digits, underscores, and hyphens.
+ * @param {string} s The string to be formatted
+ * @returns {string} A valid S3 filename similar to s.
+ */
 const s3_format = (s) => s.replace(/\s+/g, '_').replace(/[^\w\-_]/g, '');
 
+/**
+ * Transforms the header row of a spreadsheet into a schema to aid in parsing data rows later on. The number of entries for each key is determined by the number of empty cells following it in the header row with the exception of the last key. The last key will be treated as a single value unless it is followed directly by a "..." key, in which case it will be treated as having potentially infinite entries.
+ * @param {any[]} header The header row of a spreadsheet
+ * @returns {{name: string, entries: number}[]} The data schema for this sheet derived from the header row.
+ */
 const parse_schema = (header) => {
     const schema = [];
 
@@ -79,6 +92,12 @@ const parse_schema = (header) => {
     return schema;
 }
 
+/**
+ * Parses a row of data according to a provide schema from {@link parse_schema}.
+ * @param {{name: string, entries: number}[]} schema The data schema of this sheet defined by {@link parse_schema}.
+ * @param {any[]} row The row of data to be parsed
+ * @returns {{[string]: string | string[]}} An object representing this row of data.
+ */
 const parse_row = (schema, row) => {
     let output = {};
 
@@ -99,6 +118,11 @@ const parse_row = (schema, row) => {
     return output;
 };
 
+/**
+ * Takes a Google Sheet object and outputs an array of objects representing its rows parsed with a shcema defined by its header (first) row and {@link parse_schema}.
+ * @param {Sheet} sheet A Google Sheet object.
+ * @returns {{[string]: string | string[]}[]} An array of the parsed row objects.
+ */
 const parse_sheet = (sheet) => {
     const data = sheet.getDataRange().getValues();
 
@@ -113,7 +137,9 @@ const parse_sheet = (sheet) => {
     return entries;
 };
 
-// publish updated JSON to S3 if changes were made to the first sheet
+/**
+ * Parses the currently active sheet and publishes the result to S3 at "<spreadsheet name>_<spreadsheet id>/<sheet name>_<sheet id>.json".
+ */
 const publish = () => {
     const ui = SpreadsheetApp.getUi();
 
@@ -134,6 +160,7 @@ const publish = () => {
     const error = response.toString(); // response is empty if publishing successful
 
     if (error) {
+        ui.alert(`There was an error publishing your sheet. ${error}`)
         throw error;
     } else {
         ui.alert(`Data published to ${publish_path}!`);
