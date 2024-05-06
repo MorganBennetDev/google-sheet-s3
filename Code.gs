@@ -49,48 +49,68 @@ const s3PutObject = (objectName, object) => {
 
 const s3_format = (s) => s.replace(/\s+/g, '_').replace(/[^\w\-_]/g, '');
 
-// checks if document has the required configuration settings to publish to S3
-// Note: does not check if the config is valid
-const hasRequiredProps = () => {
-    const props = PropertiesService.getDocumentProperties().getProperties();
-    const requiredProps = [
-        'projectName'
-    ];
-    return requiredProps.every(prop => props[prop]);
+const parse_schema = (header) => {
+    const schema = [];
+
+    for (const cell of header) {
+        if (schema.length === 0) {
+            schema.push({
+                name: cell,
+                entries: 1
+            });
+        } else {
+            if (cell === '') {
+                schema[schema.length - 1].entries += 1;
+            } else {
+                schema.push({
+                    name: cell,
+                    entries: 1
+                })
+            }
+        }
+    }
+
+    // Allow for the user to specify that the last key is for an array of unbounded size
+    if (schema.length >= 2 && schema[schema.length - 1].name === '...') {
+        schema.pop();
+        schema[schema.length - 1].entries = Infinity;
+    }
+
+    return schema;
+}
+
+const parse_row = (schema, row) => {
+    let output = {};
+
+    let i = 0;
+
+    while (schema.length > 0) {
+        const entry_schema = schema.shift();
+
+        if (entry_schema.entries === 1) {
+            output[entry_schema.name] = row[i];
+        } else {
+            output[entry_schema.name] = row.slice(i, i + entry_schema.entries).filter(v => v !== '');
+        }
+
+        i += entry_schema.entries;
+    }
+
+    return output;
 };
 
 const parse_sheet = (sheet) => {
-    // get cell values from the range that contains data (2D array)
-    const rows = sheet
-        .getDataRange()
-        .getValues()
-        // filter out empty rows
-        .filter(row =>
-            row.some(val => val !== null)
-        )
-        // filter out columns that don't have a header (i.e. text in row 1)
-        .map((row, _, rows) =>
-            row.filter((_, index) => rows[0][index].length)
-        );
+    const data = sheet.getDataRange().getValues();
 
-    // create an array of cell objects keyed by header
-    const cells = rows
-        // exclude the header row
-        .slice(1)
-        .map(row =>
-            row.reduce((acc, val, index) =>
-                // represent blank cell values as `null`
-                // blank cells always appear as an empty string regardless of the data
-                // type of other values in the column. neutralizing everything to `null`
-                // lets us avoid mixing empty strings with other data types within a column.
-                Object.assign(
-                    acc,
-                    { [rows[0][index]]: (typeof val === 'string' && !val.length) ? null : val }
-                )
-                , {})
-        );
+    if (data.length === 0 || data[0].length === 0) return;
 
-    return cells;
+    const header = data[0];
+    const rows = data.slice(1);
+
+    const schema = parse_schema(header);
+    const entries = rows.map(row => parse_row(schema, row));
+
+    return entries;
 };
 
 // publish updated JSON to S3 if changes were made to the first sheet
@@ -104,9 +124,9 @@ const publish = () => {
 
     // upload to AWS S3
     const name = s3_format(spreadsheet.getName());
-    const id = sheet.getId();
-    const active_name = s3_format(sheet.getActiveSheet().getName());
-    const active_id = sheet.getActiveSheet().getSheetId();
+    const id = spreadsheet.getId();
+    const active_name = s3_format(sheet.getName());
+    const active_id = sheet.getSheetId();
 
     const publish_path = [`${name}_${id}`, `${active_name}_${active_id}.json`].join('/');
 
