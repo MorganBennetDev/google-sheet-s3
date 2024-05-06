@@ -112,7 +112,8 @@ const publish = () => {
         );
 
     // upload to AWS S3
-    const response = s3PutObject([props.projectName, `${sheet.getId()}.json`].join('/'), cells);
+    const id = sheet.getId();
+    const response = s3PutObject([`${props.projectName}_${id}`, `${id}.json`].join('/'), cells);
     const error = response.toString(); // response is empty if publishing successful
     if (error) {
         throw error;
