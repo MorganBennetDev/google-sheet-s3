@@ -16,6 +16,108 @@ const onInstall = () => {
 };
 
 /**
+ * Strictly adhere to RFC3986 for URI encoding
+ *
+ * https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/encodeURIComponent
+ *
+ * @param str
+ * @returns {string}
+ */
+const fixedEncodeURIComponent = (str) => {
+    return encodeURIComponent(str).replace(/[!'()*]/g, function (c) {
+        return '%' + c.charCodeAt(0).toString(16);
+    });
+};
+
+const byte_array_to_string = (v) => v.map(byte => {
+    if (byte < 0) {
+        byte += 256;
+    }
+
+    return byte.toString(16).padStart(2, '0');
+}).join('');
+
+const SHA256 = (v) => {
+    return byte_array_to_string(Utilities.base64Decode(Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, v))));
+};
+
+const ISO8601_Date = (d) => d.getUTCFullYear().toString().padStart(2, '0') +
+    (d.getUTCMonth() + 1).toString().padStart(2, '0') +
+    d.getUTCDate().toString().padStart(2, '0') +
+    "T" +
+    d.getUTCHours().toString().padStart(2, '0') +
+    d.getUTCMinutes().toString().padStart(2, '0') +
+    d.getUTCSeconds().toString().padStart(2, '0') +
+    'Z';
+
+const yyyymmdd_date = (d) => d.getUTCFullYear().toString() + (d.getUTCMonth() + 1).toString().padStart(2, '0') + d.getUTCDate().toString().padStart(2, '0');
+
+const s3_put = (payload, headers, object) => {
+    const scriptProps = PropertiesService.getScriptProperties().getProperties();
+
+    const accessKeyId = scriptProps['AWS_ACCESS_KEY_ID'];
+    const secretKey = scriptProps['AWS_SECRET_KEY'];
+    const region = scriptProps['AWS_REGION'];
+    const bucket = scriptProps['BUCKET'];
+
+    const CanonicalURI = fixedEncodeURIComponent(`/${bucket}/${object}`);
+
+    const host = 's3.amazonaws.com';
+
+    const HashedPayload = SHA256(payload);
+
+    const d = new Date();
+
+    const RequestDateTime = ISO8601_Date(d);
+
+    headers["Host"] = host;
+    headers["X-Amz-Date"] = RequestDateTime;
+    headers["X-Amz-Target"] = 'PutObject';
+    headers["X-Amz-Content-Sha256"] = HashedPayload;
+
+    const CanonicalHeaders = Object.keys(headers).sort().map(k => `${k.toLowerCase()}:${headers[k].trim()}`).join('\n')
+
+    const SignedHeaders = Object.keys(headers).sort().map(k => k.toLowerCase()).join(';');
+
+    const CanonicalRequest = [
+        'PUT',
+        CanonicalURI,
+        '',
+        CanonicalHeaders,
+        SignedHeaders,
+        HashedPayload
+    ].join('\n');
+
+    const yyyymmdd = yyyymmdd_date(d);
+
+    const CredentialScope = [
+        yyyymmdd,
+        region,
+        's3',
+        'aws4_request'
+    ].join('/');
+
+    const StringToSign = [
+        'AWS4-HMAC-SHA256',
+        RequestDateTime,
+        CredentialScope,
+        SHA256(CanonicalRequest)
+    ].join('\n');
+
+    const DateKey = Utilities.computeHmacSha256Signature(`AWS4${secretKey}`, yyyymmdd);
+    const DateRegionKey = Utilities.computeHmacSha256Signature(DateKey, Utilities.base64Decode(Utilities.base64Encode(region)));
+    const DateRegionServiceKey = Utilities.computeHmacSha256Signature(DateRegionKey, Utilities.base64Decode(Utilities.base64Encode('s3')));
+    const SigningKey = Utilities.computeHmacSha256Signature(DateRegionServiceKey, Utilities.base64Decode(Utilities.base64Encode('aws4_request')));
+
+    const signature = byte_array_to_string(Utilities.computeHmacSha256Signature(SigningKey, StringToSign));
+
+    return UrlFetchApp.fetch(`https://${host}/${bucket}/${object}`, {
+        ...headers,
+        Authorization: `AWS4-HMAC-SHA256 Credential=${accessKeyId}/${CredentialScope},SignedHeaders=${SignedHeaders},Signature=${signature}`
+    });
+};
+
+/**
  * Attempts to publish an object to S3 and returns the response.
  * @param objectName The name of the object to be published to S3.
  * @param object The object to be published to S3.
@@ -42,7 +144,7 @@ const s3PutObject = (objectName, object) => {
     const headers = {
         'Content-Type': contentType
     };
-    const uri = `/${objectName}`;
+    const uri = objectName;
     const options = {
         Bucket: bucketName
     };
@@ -158,7 +260,7 @@ const parse_sheet = (sheet) => {
     const display_data = sheet.getDataRange().getDisplayValues();
     const combined_data = rich_data.map((row, i) => row.map((cell, j) => {
         if (cell.length === 1 && cell[0].length === 0) {
-            return [ display_data[i][j] ];
+            return [display_data[i][j]];
         } else {
             return cell;
         }
@@ -210,7 +312,14 @@ const publish_sheet = (spreadsheet, sheet) => {
 
     const publish_path = [get_project_name(spreadsheet), get_file_name(sheet)].join('/');
 
-    const response = s3PutObject(publish_path, data);
+    const contentType = 'application/json';
+
+    const contentBlob = Utilities.newBlob(JSON.stringify(object), contentType);
+    contentBlob.setName(publish_path);
+
+    const response = s3_put(contentBlob, {
+        'Content-Type': 'application/json'
+    }, publish_path);
 
     return response.toString();
 }
