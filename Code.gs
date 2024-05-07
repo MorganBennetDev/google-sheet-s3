@@ -235,19 +235,19 @@ const publish_all = () => {
     const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
     const sheets = spreadsheet.getSheets();
 
-    let error = false;
+    let is_error = false;
 
     for (const sheet of sheets) {
         const error = publish_sheet(spreadsheet, sheet);
 
         if (error) {
             ui.alert(`There was an error publishing your sheet. ${error}`);
-            error = true;
+            is_error = true;
             break;
         }
     }
 
-    if (!error) {
+    if (!is_error) {
         const publish_path = get_project_name(spreadsheet);
 
         ui.alert(`Data published to ${publish_path}!`);
