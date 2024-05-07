@@ -154,11 +154,20 @@ const process_rich_text = (text) => {
 const parse_sheet = (sheet) => {
     const data = sheet.getDataRange().getValues();
     const rich_data = sheet.getDataRange().getRichTextValues().map(row => row.map(text => process_rich_text(text)));
+    // getRichTextValues returns an empty string for anything with date or currency formatting so we need to fill that in
+    const display_data = sheet.getDataRange().getDisplayValues();
+    const combined_data = rich_data.map((row, i) => row.map((cell, j) => {
+        if (cell.length === 1 && cell[0].length === 0) {
+            return [ display_data[i][j] ];
+        } else {
+            return cell;
+        }
+    }));
 
     if (data.length === 0 || data[0].length === 0) return;
 
     const header = data[0];
-    const rows = rich_data.slice(1);
+    const rows = combined_data.slice(1);
 
     const schema = parse_schema(header);
     const entries = rows.map(row => parse_row(JSON.parse(JSON.stringify(schema)), row));
@@ -197,7 +206,9 @@ const get_file_name = (sheet) => {
  * @returns {string} The response from S3. This will be empty if publishing was successful.
  */
 const publish_sheet = (spreadsheet, sheet) => {
-    const data = parse_sheet(sheet);    
+    const data = parse_sheet(sheet);
+
+    console.log(data);
 
     const publish_path = [get_project_name(spreadsheet), get_file_name(sheet)].join('/');
 
