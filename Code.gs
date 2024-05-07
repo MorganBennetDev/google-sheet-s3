@@ -208,8 +208,6 @@ const get_file_name = (sheet) => {
 const publish_sheet = (spreadsheet, sheet) => {
     const data = parse_sheet(sheet);
 
-    console.log(data);
-
     const publish_path = [get_project_name(spreadsheet), get_file_name(sheet)].join('/');
 
     const response = s3PutObject(publish_path, data);
