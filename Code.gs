@@ -52,7 +52,30 @@ const ISO8601_Date = (d) => d.getUTCFullYear().toString().padStart(2, '0') +
 
 const yyyymmdd_date = (d) => d.getUTCFullYear().toString() + (d.getUTCMonth() + 1).toString().padStart(2, '0') + d.getUTCDate().toString().padStart(2, '0');
 
-const s3_put = (payload, headers, object) => {
+const HMAC_SHA256 = (key, value) => Utilities.computeHmacSha256Signature(value, key);
+
+const print_byte_array = (v) => v.reduce((a, byte, i, bytes) => {
+    if (byte < 0) {
+        byte += 256;
+    }
+
+    let out = byte.toString(16).padStart(2, '0');
+
+    if (i < bytes.length - 1) {
+        if ((i + 1) % 16 === 0) {
+            out += '\n';
+        } else {
+            out += ' ';
+        }
+    }
+
+    return a + out;
+}, '');
+
+// https://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-header-based-auth.html
+const s3_put_json = (data, object) => {
+    const payload = JSON.stringify(data);
+
     const scriptProps = PropertiesService.getScriptProperties().getProperties();
 
     const accessKeyId = scriptProps['AWS_ACCESS_KEY_ID'];
@@ -60,9 +83,10 @@ const s3_put = (payload, headers, object) => {
     const region = scriptProps['AWS_REGION'];
     const bucket = scriptProps['BUCKET'];
 
-    const CanonicalURI = fixedEncodeURIComponent(`/${bucket}/${object}`);
+    const CanonicalURI = `/${bucket}/${object}`;
 
-    const host = 's3.amazonaws.com';
+    const host = `s3.${region}.amazonaws.com`;
+    const url = `https://${host}/${bucket}/${object}`
 
     const HashedPayload = SHA256(payload);
 
@@ -70,10 +94,13 @@ const s3_put = (payload, headers, object) => {
 
     const RequestDateTime = ISO8601_Date(d);
 
-    headers["Host"] = host;
-    headers["X-Amz-Date"] = RequestDateTime;
-    headers["X-Amz-Target"] = 'PutObject';
-    headers["X-Amz-Content-Sha256"] = HashedPayload;
+    const headers = {
+        'Host': host,
+        'Content-Type': 'application/json',
+        'X-Amz-Date': RequestDateTime,
+        'X-Amz-Target': 'PutObject',
+        'X-Amz-Content-Sha256': HashedPayload
+    };
 
     const CanonicalHeaders = Object.keys(headers).sort().map(k => `${k.toLowerCase()}:${headers[k].trim()}`).join('\n')
 
@@ -84,6 +111,7 @@ const s3_put = (payload, headers, object) => {
         CanonicalURI,
         '',
         CanonicalHeaders,
+        '',
         SignedHeaders,
         HashedPayload
     ].join('\n');
@@ -104,53 +132,24 @@ const s3_put = (payload, headers, object) => {
         SHA256(CanonicalRequest)
     ].join('\n');
 
-    const DateKey = Utilities.computeHmacSha256Signature(`AWS4${secretKey}`, yyyymmdd);
-    const DateRegionKey = Utilities.computeHmacSha256Signature(DateKey, Utilities.base64Decode(Utilities.base64Encode(region)));
-    const DateRegionServiceKey = Utilities.computeHmacSha256Signature(DateRegionKey, Utilities.base64Decode(Utilities.base64Encode('s3')));
-    const SigningKey = Utilities.computeHmacSha256Signature(DateRegionServiceKey, Utilities.base64Decode(Utilities.base64Encode('aws4_request')));
+    const DateKey = HMAC_SHA256(`AWS4${secretKey}`, yyyymmdd);
+    const DateRegionKey = HMAC_SHA256(DateKey, Utilities.newBlob(region).getBytes());
+    const DateRegionServiceKey = HMAC_SHA256(DateRegionKey, Utilities.newBlob('s3').getBytes());
+    const SigningKey = HMAC_SHA256(DateRegionServiceKey, Utilities.newBlob('aws4_request').getBytes());
 
-    const signature = byte_array_to_string(Utilities.computeHmacSha256Signature(SigningKey, StringToSign));
+    const signature = byte_array_to_string(HMAC_SHA256(SigningKey, Utilities.newBlob(StringToSign).getBytes()));
 
-    return UrlFetchApp.fetch(`https://${host}/${bucket}/${object}`, {
-        ...headers,
-        Authorization: `AWS4-HMAC-SHA256 Credential=${accessKeyId}/${CredentialScope},SignedHeaders=${SignedHeaders},Signature=${signature}`
+    delete headers['Host'];
+
+    return UrlFetchApp.fetch(url, {
+        method: 'PUT',
+        headers: {
+            'Authorization': `AWS4-HMAC-SHA256 Credential=${accessKeyId}/${CredentialScope},SignedHeaders=${SignedHeaders},Signature=${signature}`,
+            ...headers
+        },
+        payload: payload,
+        muteHttpExceptions: true
     });
-};
-
-/**
- * Attempts to publish an object to S3 and returns the response.
- * @param objectName The name of the object to be published to S3.
- * @param object The object to be published to S3.
- * @returns The response from S3 to the publishing request.
- */
-const s3PutObject = (objectName, object) => {
-    const scriptProps = PropertiesService.getScriptProperties().getProperties();
-
-    const awsAccessKeyId = scriptProps['AWS_ACCESS_KEY_ID'];
-    const awsSecretKey = scriptProps['AWS_SECRET_KEY'];
-    const awsRegion = scriptProps['AWS_REGION'];
-    const bucketName = scriptProps['BUCKET'];
-
-    const contentType = 'application/json';
-
-    const contentBlob = Utilities.newBlob(JSON.stringify(object), contentType);
-    contentBlob.setName(objectName);
-
-    const service = 's3';
-    const action = 'PutObject';
-    const params = {};
-    const method = 'PUT';
-    const payload = contentBlob.getDataAsString();
-    const headers = {
-        'Content-Type': contentType
-    };
-    const uri = objectName;
-    const options = {
-        Bucket: bucketName
-    };
-
-    AWS.init(awsAccessKeyId, awsSecretKey);
-    return AWS.request(service, awsRegion, action, params, method, payload, headers, uri, options);
 };
 
 /**
@@ -312,14 +311,7 @@ const publish_sheet = (spreadsheet, sheet) => {
 
     const publish_path = [get_project_name(spreadsheet), get_file_name(sheet)].join('/');
 
-    const contentType = 'application/json';
-
-    const contentBlob = Utilities.newBlob(JSON.stringify(object), contentType);
-    contentBlob.setName(publish_path);
-
-    const response = s3_put(contentBlob, {
-        'Content-Type': 'application/json'
-    }, publish_path);
+    const response = s3_put_json(data, publish_path);
 
     return response.toString();
 }
