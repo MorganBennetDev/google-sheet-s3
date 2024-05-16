@@ -38,7 +38,7 @@ const byte_array_to_string = (v) => v.map(byte => {
 }).join('');
 
 const SHA256 = (v) => {
-    return byte_array_to_string(Utilities.base64Decode(Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, v))));
+    return byte_array_to_string(Utilities.base64Decode(Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, v, Utilities.Charset.UTF_8))));
 };
 
 const ISO8601_Date = (d) => d.getUTCFullYear().toString().padStart(2, '0') +
